@@ -13,6 +13,7 @@ use yew::{function_component, html, use_state, Callback, Html};
 
 use crate::components::canvas2d::Canvas;
 use crate::components::canvas2d::WithRender;
+use crate::components::render2d::_RenderProperties::polygons;
 
 //Befor impl WithRander, derive Clone and PartialEq first!
 #[derive(Clone, PartialEq)]
@@ -96,20 +97,23 @@ impl WithRender for Render {
         match bbox {
             BoundingBox::Empty => {}
             BoundingBox::Box(bbox) => {
+                let bbox = bbox.expand(0.1.into());
                 let p = ScreenProject2d::from_bounding_box(&bbox, width, height);
-                let (center_x, center_y) = p.project_point(&(0.0, 0.0).into());
-                let (tick_y, tick_side_vertical) = if center_y < 0.0 {
+                let (zero_x, zero_y) = p.project_point(&(0.0, 0.0).into());
+                let (min_x, min_y) = p.project_point(&(bbox.min_x(), bbox.min_y()).into());
+                let (max_x, max_y) = p.project_point(&(bbox.max_x(), bbox.max_y()).into());
+                let (tick_y, tick_side_vertical) = if zero_y < 0.0 {
                     (0.0, TickSideVertical::Bottom)
-                } else if center_y > height {
+                } else if zero_y > height {
                     (height, TickSideVertical::Top)
                 } else {
                     ctx.begin_path();
-                    ctx.move_to(0.0, center_y);
-                    ctx.line_to(width, center_y);
+                    ctx.move_to(min_x, zero_y);
+                    ctx.line_to(max_x, zero_y);
                     ctx.stroke();
                     (
-                        center_y,
-                        if center_y > height / 2.0 {
+                        zero_y,
+                        if zero_y > height / 2.0 {
                             TickSideVertical::Top
                         } else {
                             TickSideVertical::Bottom
@@ -117,18 +121,18 @@ impl WithRender for Render {
                     )
                 };
 
-                let (tick_x, tick_side_horizontal) = if center_x < 0.0 {
+                let (tick_x, tick_side_horizontal) = if zero_x < 0.0 {
                     (0.0, TickSideHorizontal::Right)
-                } else if center_x > width {
+                } else if zero_x > width {
                     (0.0, TickSideHorizontal::Left)
                 } else {
                     ctx.begin_path();
-                    ctx.move_to(center_x, 0.0);
-                    ctx.line_to(center_x, height);
+                    ctx.move_to(zero_x, min_y);
+                    ctx.line_to(zero_x, max_y);
                     ctx.stroke();
                     (
-                        center_x,
-                        if center_x > width / 2.0 {
+                        zero_x,
+                        if zero_x > width / 2.0 {
                             TickSideHorizontal::Left
                         } else {
                             TickSideHorizontal::Right
@@ -159,7 +163,21 @@ impl WithRender for Render {
                     Self::draw_x_tick(&ctx, &p, &tick_side_vertical, x_tick, tick_y);
                     x_tick -= x_step;
                 }
-                info!("x_step: {x_step}");
+
+                for polygon in &self.polygons.0 {
+                    let mut iter = polygon.points();
+                    if let Some(start_pt) = iter.next() {
+                        let (x, y) = p.project_point(start_pt);
+                        ctx.begin_path();
+                        ctx.move_to(x, y);
+                        for next_pt in iter {
+                            let (x, y) = p.project_point(next_pt);
+                            ctx.line_to(x, y);
+                        }
+                        ctx.close_path();
+                        ctx.stroke();
+                    }
+                }
             }
         }
     }

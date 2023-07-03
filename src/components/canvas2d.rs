@@ -52,7 +52,7 @@ where
     let node_ref = NodeRef::default();
     let is_first_rander = use_state(|| true);
     let style = props.style.clone().unwrap_or(String::new());
-    let display_size = use_state(|| (300, 150));
+    let display_size = use_state(|| (600, 500));
 
     let size_listen_event_state = use_state(|| EventListener::new(&window(), "resize", |_| ()));
 
