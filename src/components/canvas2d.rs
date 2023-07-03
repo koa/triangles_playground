@@ -1,5 +1,6 @@
-use gloo::{events::EventListener, utils::window};
 use std::ops::Deref;
+
+use gloo::{events::EventListener, utils::window};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 use yew::{html::ChildrenRenderer, prelude::*};
@@ -45,7 +46,7 @@ use yew::{html::ChildrenRenderer, prelude::*};
 #[function_component(Canvas)]
 pub fn canvas<CanvasContext, T>(props: &Props<T>) -> Html
 where
-    T: PartialEq + WithRander + Clone + 'static,
+    T: PartialEq + WithRender + Clone + 'static,
     CanvasContext: JsCast,
 {
     let node_ref = NodeRef::default();
@@ -53,7 +54,7 @@ where
     let style = props.style.clone().unwrap_or(String::new());
     let display_size = use_state(|| (300, 150));
 
-    let size_listen_enent_state = use_state(|| EventListener::new(&window(), "resize", |_| ()));
+    let size_listen_event_state = use_state(|| EventListener::new(&window(), "resize", |_| ()));
 
     {
         let node_ref = node_ref.clone();
@@ -68,7 +69,7 @@ where
 
                     display_size.set((canvas.client_width(), canvas.client_height()));
 
-                    size_listen_enent_state.set(EventListener::new(
+                    size_listen_event_state.set(EventListener::new(
                         &window(),
                         "resize",
                         move |_| {
@@ -124,7 +125,7 @@ where
 ///            .unwrap();
 ///    ...
 /// ```
-pub trait WithRander: Clone + PartialEq {
+pub trait WithRender: Clone + PartialEq {
     fn rand(self, canvas: &HtmlCanvasElement);
 }
 
