@@ -1,4 +1,3 @@
-use log::info;
 use patternfly_yew::prelude::{
     BackdropViewer, Nav, NavItem, NavRouterItem, Page, PageSidebar, ToastViewer,
 };
@@ -15,7 +14,6 @@ pub mod basic2d;
 
 #[function_component(MainPage)]
 pub fn main_page() -> Html {
-    info!("Hello");
     html! {
         <BackdropViewer>
             <ToastViewer>

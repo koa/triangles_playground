@@ -1,9 +1,15 @@
+use std::cell::RefCell;
 use std::ops::Deref;
+use std::rc::Rc;
 
 use gloo::{events::EventListener, utils::window};
+use log::info;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
-use yew::{html::ChildrenRenderer, prelude::*};
+use yew::{
+    function_component, html, html::ChildrenRenderer, use_effect, use_state, Children, Html,
+    NodeRef, Properties,
+};
 
 /// A Canvas component is encapsulated.
 ///
@@ -50,21 +56,22 @@ where
     CanvasContext: JsCast,
 {
     let node_ref = NodeRef::default();
-    let is_first_rander = use_state(|| true);
+    let is_first_render = use_state(|| true);
     let style = props.style.clone().unwrap_or(String::new());
-    let display_size = use_state(|| (600, 500));
+    let class = props.class.clone().unwrap_or_default();
+    let display_size = use_state(|| (10, 10));
 
     let size_listen_event_state = use_state(|| EventListener::new(&window(), "resize", |_| ()));
 
     {
         let node_ref = node_ref.clone();
         let display_size = display_size.clone();
-        let rander = props.rander.clone();
+        let render = props.render.clone();
 
         use_effect(move || {
             if let Some(canvas) = node_ref.cast::<HtmlCanvasElement>() {
-                if *is_first_rander {
-                    is_first_rander.set(false);
+                if *is_first_render {
+                    is_first_render.set(false);
                     let canvas = canvas.clone();
 
                     display_size.set((canvas.client_width(), canvas.client_height()));
@@ -73,14 +80,14 @@ where
                         &window(),
                         "resize",
                         move |_| {
-                            display_size.set((canvas.client_width(), canvas.client_height()));
+                            let new_size = (canvas.client_width(), canvas.client_height());
+                            display_size.set(new_size);
                         },
                     ));
                 }
 
-                rander.rand(&canvas);
+                render.rand(&canvas);
             }
-
             || ()
         });
     }
@@ -89,12 +96,13 @@ where
         .children
         .clone()
         .unwrap_or(ChildrenRenderer::default());
-
+    let (width, height) = display_size.deref();
     html! {
     <canvas
         style={style}
-        width={display_size.clone().deref().0.to_string()}
-        height={display_size.deref().1.to_string()}
+        {class}
+        width={width.to_string()}
+        height={height.to_string()}
         ref={node_ref}
     >
         { for children.iter() }
@@ -131,7 +139,8 @@ pub trait WithRender: Clone + PartialEq {
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct Props<T: PartialEq> {
-    pub rander: Box<T>,
+    pub render: Box<T>,
     pub children: Option<Children>,
     pub style: Option<String>,
+    pub class: Option<String>,
 }

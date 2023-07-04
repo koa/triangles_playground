@@ -1,4 +1,5 @@
 use log::info;
+use triangles::prelude::{Line2d, PolygonPath, Triangle2d};
 use triangles::prelude::{Polygon2d, StaticTriangle2d};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -7,7 +8,7 @@ use yew::{html, use_state, Callback, Html};
 
 use crate::components::canvas2d::Canvas;
 use crate::components::canvas2d::WithRender;
-use crate::components::render2d::{PolygonList, Render2d};
+use crate::components::render2d::{CssColor, CssStyle, Figure, PolygonList, Render2d};
 
 //Befor impl WithRander, derive Clone and PartialEq first!
 #[derive(Clone, PartialEq)]
@@ -56,15 +57,61 @@ impl WithRender for Render {
         interface.stroke_rect(text_pos.0, text_pos.1, width, font_bounding_box_descent)
     }
 }
+
 #[function_component(Basic2d)]
 pub fn basic_2d() -> Html {
     let big_triangle = StaticTriangle2d::new(
         (-100.0, -50.0).into(),
         (100.0, -50.0).into(),
         (0.0, 50.0).into(),
-    )
-    .to_any_polygon();
-    let polygons: PolygonList = vec![big_triangle].into();
+    );
+    let small_triangle = StaticTriangle2d::new(
+        (-50.0, 25.0).into(),
+        (0.0, -25.0).into(),
+        (50.0, 25.0).into(),
+    );
+    let cut_polygon = &small_triangle;
+    let path = big_triangle.cut(cut_polygon);
+
+    let mut figure_list = vec![
+        Figure::polygon(
+            CssStyle::Color(CssColor::Blue),
+            big_triangle.to_any_polygon(),
+        ),
+        Figure::polygon(
+            CssStyle::Color(CssColor::Green),
+            small_triangle.to_any_polygon(),
+        ),
+    ];
+    match &path {
+        PolygonPath::Enclosed => {
+            figure_list.push(Figure::polygon(
+                CssStyle::Color(CssColor::Red),
+                cut_polygon.to_any_polygon(),
+            ));
+        }
+        PolygonPath::CutSegments(segments) => {
+            for segment in segments {
+                let mut points = Vec::new();
+                let start_cut = segment.start_cut();
+                let end_cut = segment.end_cut();
+                if let (Some(start_line), Some(end_line)) = (
+                    cut_polygon.lines().nth(start_cut.start_pt_idx()),
+                    cut_polygon.lines().nth(end_cut.start_pt_idx()),
+                ) {
+                    points.push(start_line.pt_along(start_cut.polygon_pos()));
+                    for p in cut_polygon.points_of_range(segment.copy_points()) {
+                        points.push(*p);
+                    }
+                    points.push(end_line.pt_along(end_cut.polygon_pos()));
+                    figure_list.push(Figure::lines(CssStyle::Color(CssColor::Red), points));
+                }
+            }
+        }
+        PolygonPath::None => {}
+    }
+
+    let polygons: PolygonList = figure_list.into();
     html! {<Render2d {polygons}/>}
 }
 
@@ -86,7 +133,7 @@ pub fn old_basic2d() -> Html {
                     height: calc(100vh - 32px);
                 "
                 //send props when create a Render
-                rander={Box::new(Render{sakara: *sakara_state})}
+                render={Box::new(Render{sakara: *sakara_state})}
             >
                 {"The browser is not supported."}
             </Canvas<CanvasRenderingContext2d, Render >>

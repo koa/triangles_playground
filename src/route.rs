@@ -11,6 +11,6 @@ pub enum AppRoute {
 
 pub fn switch_main(switch: AppRoute) -> Html {
     match switch {
-        AppRoute::Home => html! {<h1><Basic2d/></h1>},
+        AppRoute::Home => html! {<Basic2d/>},
     }
 }

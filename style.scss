@@ -6,3 +6,13 @@ $fa-font-path: "webfonts";
 // PatternFly styles
 @import "node/node_modules/@patternfly/patternfly/patternfly.scss";
 @import "node/node_modules/@patternfly/patternfly/patternfly-addons.scss";
+
+section.pf-m-fill {
+  display: grid;
+  align-items: stretch;
+  //justify-items: stretch;
+  margin: 0;
+}
+
+section.pf-m-fill > canvas {
+}

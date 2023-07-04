@@ -1,24 +1,25 @@
 use std::default::Default;
+use std::rc::Rc;
 
-use log::info;
 use num_traits::Pow;
+use patternfly_yew::prelude::{PageSection, PageSectionFill};
 use triangles::prelude::{
     AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d, StaticTriangle2d,
 };
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::html::IntoPropValue;
 use yew::Properties;
-use yew::{function_component, html, use_state, Callback, Html};
+use yew::{function_component, html, Html};
 
 use crate::components::canvas2d::Canvas;
 use crate::components::canvas2d::WithRender;
-use crate::components::render2d::_RenderProperties::polygons;
+use crate::components::render2d::CssStyle::Color;
 
 //Befor impl WithRander, derive Clone and PartialEq first!
 #[derive(Clone, PartialEq)]
 struct Render {
-    polygons: PolygonList,
+    display_list: Rc<[Figure]>,
 }
 struct ScreenProject2d {
     scale: Number,
@@ -30,7 +31,6 @@ impl ScreenProject2d {
     fn from_bounding_box(bbox: &BoundingBoxValues, canvas_width: f64, canvas_height: f64) -> Self {
         let canvas_width = Into::<Number>::into(canvas_width);
         let canvas_height = Into::<Number>::into(canvas_height);
-        info!("canvas: {canvas_width},{canvas_height}");
         let fact = Number::min(canvas_width / bbox.width(), canvas_height / bbox.height());
         let x_offset = -bbox.min_x() * fact + ((canvas_width - bbox.width() * fact) / 2.0);
 
@@ -84,15 +84,16 @@ impl WithRender for Render {
             .dyn_into()
             .unwrap();
 
+        ctx.set_stroke_style(&CssColor::Black.value());
+
         let width = canvas.width() as f64;
         let height = canvas.height() as f64;
         ctx.clear_rect(0.0, 0.0, width, height);
 
         let mut bbox: BoundingBox = BoundingBox::default();
-        for polygon in &self.polygons.0 {
-            for p in polygon.points() {
-                bbox += *p;
-            }
+
+        for figure in self.display_list.iter() {
+            bbox += figure.bbox();
         }
         match bbox {
             BoundingBox::Empty => {}
@@ -164,19 +165,8 @@ impl WithRender for Render {
                     x_tick -= x_step;
                 }
 
-                for polygon in &self.polygons.0 {
-                    let mut iter = polygon.points();
-                    if let Some(start_pt) = iter.next() {
-                        let (x, y) = p.project_point(start_pt);
-                        ctx.begin_path();
-                        ctx.move_to(x, y);
-                        for next_pt in iter {
-                            let (x, y) = p.project_point(next_pt);
-                            ctx.line_to(x, y);
-                        }
-                        ctx.close_path();
-                        ctx.stroke();
-                    }
+                for figure in self.display_list.iter() {
+                    figure.draw(&ctx, &p);
                 }
             }
         }
@@ -258,19 +248,144 @@ fn find_optimal_step(step: f64) -> f64 {
     };
     10.0.pow(pow) * scale
 }
+#[derive(Clone, PartialEq, Debug)]
+pub struct Figure {
+    style: CssStyle,
+    geometry: AnyGeometry,
+}
+
+impl Figure {
+    pub fn polygon(style: CssStyle, polygon: AnyPolygon) -> Self {
+        Self {
+            style,
+            geometry: AnyGeometry::Polygon(polygon),
+        }
+    }
+    pub fn lines(style: CssStyle, lines: Vec<Point2d>) -> Self {
+        Self {
+            style,
+            geometry: AnyGeometry::Lines(lines),
+        }
+    }
+    fn bbox(&self) -> BoundingBox {
+        self.geometry.bounding_box()
+    }
+    fn draw(&self, ctx: &CanvasRenderingContext2d, p: &ScreenProject2d) {
+        match &self.geometry {
+            AnyGeometry::Polygon(polygon) => {
+                let mut iter = polygon.points();
+                if let Some(start_pt) = iter.next() {
+                    let (x, y) = p.project_point(start_pt);
+                    ctx.begin_path();
+                    ctx.set_stroke_style(&self.style.value());
+                    ctx.move_to(x, y);
+                    for next_pt in iter {
+                        let (x, y) = p.project_point(next_pt);
+                        ctx.line_to(x, y);
+                    }
+                    ctx.close_path();
+                    ctx.stroke();
+                }
+            }
+            AnyGeometry::Lines(lines) => {
+                let mut iter = lines.points();
+                if let Some(start_pt) = iter.next() {
+                    let (x, y) = p.project_point(start_pt);
+                    ctx.begin_path();
+                    ctx.set_stroke_style(&self.style.value());
+                    ctx.move_to(x, y);
+                    for next_pt in iter {
+                        let (x, y) = p.project_point(next_pt);
+                        ctx.line_to(x, y);
+                    }
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum CssStyle {
+    Color(CssColor),
+}
+
+impl CssStyle {
+    fn value(&self) -> JsValue {
+        match self {
+            Color(c) => c.value(),
+        }
+    }
+}
+
+impl Default for CssStyle {
+    fn default() -> Self {
+        Color(CssColor::Black)
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Default)]
+pub enum CssColor {
+    #[default]
+    Black,
+    Blue,
+    Green,
+    Red,
+}
+
+impl CssColor {
+    fn value(&self) -> JsValue {
+        match self {
+            CssColor::Black => JsValue::from_str("black"),
+            CssColor::Blue => JsValue::from_str("blue"),
+            CssColor::Green => JsValue::from_str("green"),
+            CssColor::Red => JsValue::from_str("red"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum AnyGeometry {
+    Polygon(AnyPolygon),
+    Lines(Vec<Point2d>),
+}
+
+impl AnyGeometry {
+    fn bounding_box(&self) -> BoundingBox {
+        let mut bbox = BoundingBox::default();
+        match self {
+            AnyGeometry::Polygon(p) => {
+                for p in p.points() {
+                    bbox += *p;
+                }
+            }
+            AnyGeometry::Lines(l) => {
+                for p in l {
+                    bbox += *p;
+                }
+            }
+        }
+        bbox
+    }
+}
 
 #[derive(Clone, PartialEq)]
-pub struct PolygonList(Vec<AnyPolygon>);
+pub struct PolygonList(Rc<[Figure]>);
 
-impl IntoPropValue<Vec<AnyPolygon>> for PolygonList {
-    fn into_prop_value(self) -> Vec<AnyPolygon> {
+impl IntoPropValue<Rc<[Figure]>> for PolygonList {
+    fn into_prop_value(self) -> Rc<[Figure]> {
         self.0
     }
 }
 
-impl From<Vec<AnyPolygon>> for PolygonList {
-    fn from(value: Vec<AnyPolygon>) -> Self {
+impl From<Rc<[Figure]>> for PolygonList {
+    fn from(value: Rc<[Figure]>) -> Self {
         PolygonList(value)
+    }
+}
+impl From<Vec<Figure>> for PolygonList {
+    fn from(value: Vec<Figure>) -> Self {
+        PolygonList(Rc::from(value.as_slice()))
     }
 }
 
@@ -284,7 +399,7 @@ pub fn render_2d(properties: &RenderProperties) -> Html {
     html!(
             <Canvas<CanvasRenderingContext2d, Render>
                 //send props when create a Render
-                rander={Box::new(Render{polygons:properties.polygons.clone()})}
+                render={Box::new(Render{display_list:properties.polygons.0.clone()})}
             >
                 {"The browser is not supported."}
             </Canvas<CanvasRenderingContext2d, Render >>

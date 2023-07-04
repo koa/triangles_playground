@@ -9,4 +9,4 @@ command = "sh"
 command_arguments = ["-c", "cd node && npm install"]
 
 [watch]
-watch = ["src", "Cargo.toml", "Trunk.toml", "index.html"]
+watch = ["src", "Cargo.toml", "Trunk.toml", "index.html","style.scss"]
