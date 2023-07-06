@@ -1,26 +1,36 @@
+use std::cell::RefCell;
 use std::default::Default;
+use std::ops::Deref;
 use std::rc::Rc;
 
+use log::info;
 use num_traits::Pow;
-use patternfly_yew::prelude::{PageSection, PageSectionFill};
-use triangles::prelude::{
-    AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d, StaticTriangle2d,
-};
+use triangles::prelude::{AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use yew::html::IntoPropValue;
-use yew::Properties;
 use yew::{function_component, html, Html};
+use yew::{Callback, Properties};
 
 use crate::components::canvas2d::Canvas;
 use crate::components::canvas2d::WithRender;
+use crate::components::render2d::tick_sequence::TickSequence;
 use crate::components::render2d::CssStyle::Color;
 
 //Befor impl WithRander, derive Clone and PartialEq first!
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct Render {
     display_list: Rc<[Figure]>,
+    last_projection: Rc<RefCell<Option<ScreenProject2d>>>,
 }
+
+impl PartialEq for Render {
+    fn eq(&self, other: &Self) -> bool {
+        self.display_list == other.display_list
+    }
+}
+
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 struct ScreenProject2d {
     scale: Number,
     x_offset: Number,
@@ -47,6 +57,12 @@ impl ScreenProject2d {
             (-self.scale * p.y() + self.y_offset).into(),
         )
     }
+    fn find_origin_point(&self, x: i32, y: i32) -> (Number, Number) {
+        (
+            ((Number::from(x as f64) - self.x_offset) / self.scale),
+            ((Number::from(y as f64) - self.y_offset) / -self.scale),
+        )
+    }
 
     pub fn scale(&self) -> Number {
         self.scale
@@ -65,12 +81,16 @@ mod test {
         let (x, y) = p.project_point(&(42.0, 23.0).into());
         assert_eq!(x, 31.0);
         assert_eq!(y, 63.5);
+        let (x, y) = p.find_origin_point(x.round() as i32, y.round() as i32);
+        println!("{x},{y}");
     }
 }
+#[derive(Debug)]
 enum TickSideHorizontal {
     Left,
     Right,
 }
+#[derive(Debug)]
 enum TickSideVertical {
     Top,
     Bottom,
@@ -100,7 +120,9 @@ impl WithRender for Render {
             BoundingBox::Box(bbox) => {
                 let bbox = bbox.expand(0.1.into());
                 let p = ScreenProject2d::from_bounding_box(&bbox, width, height);
+                let _ = self.last_projection.borrow_mut().insert(p);
                 let (zero_x, zero_y) = p.project_point(&(0.0, 0.0).into());
+                info!("Zero: {zero_x},{zero_y}");
                 let (min_x, min_y) = p.project_point(&(bbox.min_x(), bbox.min_y()).into());
                 let (max_x, max_y) = p.project_point(&(bbox.max_x(), bbox.max_y()).into());
                 let (tick_y, tick_side_vertical) = if zero_y < 0.0 {
@@ -108,6 +130,7 @@ impl WithRender for Render {
                 } else if zero_y > height {
                     (height, TickSideVertical::Top)
                 } else {
+                    info!("minmax {min_x} {max_x}");
                     ctx.begin_path();
                     ctx.move_to(min_x, zero_y);
                     ctx.line_to(max_x, zero_y);
@@ -123,9 +146,9 @@ impl WithRender for Render {
                 };
 
                 let (tick_x, tick_side_horizontal) = if zero_x < 0.0 {
-                    (0.0, TickSideHorizontal::Right)
+                    (min_x, TickSideHorizontal::Right)
                 } else if zero_x > width {
-                    (0.0, TickSideHorizontal::Left)
+                    (max_x, TickSideHorizontal::Left)
                 } else {
                     ctx.begin_path();
                     ctx.move_to(zero_x, min_y);
@@ -140,29 +163,16 @@ impl WithRender for Render {
                         },
                     )
                 };
+                info!("{tick_x} {tick_side_horizontal:?}");
 
                 let y_step = find_optimal_step(40.0 / p.scale().0);
-                let mut y_tick = y_step;
-                while y_tick < bbox.max_y().0 {
+                for y_tick in TickSequence::new(bbox.min_y().0, bbox.max_y().0, y_step).iter() {
                     Self::draw_y_tick(&ctx, &p, &tick_side_horizontal, y_tick, tick_x);
-                    y_tick += y_step;
-                }
-                y_tick = -y_step;
-                while y_tick > bbox.min_y().0 {
-                    Self::draw_y_tick(&ctx, &p, &tick_side_horizontal, y_tick, tick_x);
-                    y_tick -= y_step;
                 }
 
                 let x_step = find_optimal_step(40.0 / p.scale().0);
-                let mut x_tick = x_step;
-                while x_tick < bbox.max_x().0 {
+                for x_tick in TickSequence::new(bbox.min_x().0, bbox.max_x().0, x_step).iter() {
                     Self::draw_x_tick(&ctx, &p, &tick_side_vertical, x_tick, tick_y);
-                    x_tick += x_step;
-                }
-                x_tick = -x_step;
-                while x_tick > bbox.min_x().0 {
-                    Self::draw_x_tick(&ctx, &p, &tick_side_vertical, x_tick, tick_y);
-                    x_tick -= x_step;
                 }
 
                 for figure in self.display_list.iter() {
@@ -170,6 +180,90 @@ impl WithRender for Render {
                 }
             }
         }
+    }
+}
+mod tick_sequence {
+
+    pub struct TickSequence {
+        min: f64,
+        max: f64,
+        step: f64,
+    }
+
+    impl TickSequence {
+        pub fn iter(&self) -> TickSequenceIterator {
+            TickSequenceIterator {
+                sequence: self,
+                current_side: TickSequenceSide::Negative,
+                last_value: Default::default(),
+            }
+        }
+        pub fn new(min: f64, max: f64, step: f64) -> Self {
+            Self { min, max, step }
+        }
+    }
+
+    pub struct TickSequenceIterator<'a> {
+        sequence: &'a TickSequence,
+        current_side: TickSequenceSide,
+        last_value: f64,
+    }
+
+    impl<'a> Iterator for TickSequenceIterator<'a> {
+        type Item = f64;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            match self.current_side {
+                TickSequenceSide::Negative => {
+                    let next_value = self.last_value - self.sequence.step;
+                    if next_value >= self.sequence.min {
+                        self.last_value = next_value;
+                        Some(next_value)
+                    } else if self.sequence.max < self.sequence.step {
+                        None
+                    } else {
+                        self.current_side = TickSequenceSide::Positive;
+                        self.last_value = if self.sequence.min < 0.0 {
+                            self.sequence.step.into()
+                        } else {
+                            (self.sequence.min / self.sequence.step).ceil() * self.sequence.step
+                        };
+                        Some(self.last_value)
+                    }
+                }
+                TickSequenceSide::Positive => {
+                    let next_value = self.last_value + self.sequence.step;
+                    if next_value <= self.sequence.max {
+                        self.last_value = next_value;
+                        Some(self.last_value)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    enum TickSequenceSide {
+        Negative,
+        Positive,
+    }
+    #[test]
+    fn test_sequence() {
+        let sequence = TickSequence::new(-55.0, 45.0, 5.0);
+        let mut iterator = sequence.iter();
+        assert_eq!(Some(-5.0), iterator.next());
+        assert_eq!(Some(-10.0), iterator.next());
+        assert_eq!(Some(-15.0), iterator.next());
+        assert_eq!(Some(-20.0), iterator.next());
+        assert_eq!(Some(-25.0), iterator.next());
+        assert_eq!(Some(-30.0), iterator.next());
+        assert_eq!(Some(-35.0), iterator.next());
+        assert_eq!(Some(-40.0), iterator.next());
+        assert_eq!(Some(-45.0), iterator.next());
+        assert_eq!(Some(-50.0), iterator.next());
+        assert_eq!(Some(-55.0), iterator.next());
+        assert_eq!(Some(5.0), iterator.next());
     }
 }
 
@@ -214,14 +308,14 @@ impl Render {
         let (_, y) = p.project_point(&(0.0, y_tick).into());
         let label = &format!("{}", y_tick);
         match tick_side_horizontal {
-            TickSideHorizontal::Left => {
+            TickSideHorizontal::Right => {
                 ctx.begin_path();
                 ctx.move_to(tick_x, y);
                 ctx.line_to(tick_x + 5.0, y);
                 ctx.stroke();
                 ctx.fill_text(label, tick_x + 10.0, y).unwrap();
             }
-            TickSideHorizontal::Right => {
+            TickSideHorizontal::Left => {
                 let text_metrics = ctx.measure_text(label).unwrap();
                 ctx.begin_path();
                 ctx.move_to(tick_x, y);
@@ -236,17 +330,18 @@ impl Render {
 
 fn find_optimal_step(step: f64) -> f64 {
     let log10 = step.log10();
-    let fract = (log10 - log10.floor());
-    let (pow, scale) = if fract < 0.17 {
-        (log10.floor(), 1.0)
+    let floor = log10.floor();
+    let fract = log10 - floor;
+    let scale = if fract < 0.17 {
+        1.0
     } else if fract < 0.5 {
-        (log10.floor(), 2.0)
+        2.0
     } else if fract < 0.85 {
-        (log10.floor(), 5.0)
+        5.0
     } else {
-        (log10.ceil(), 1.0)
+        10.0
     };
-    10.0.pow(pow) * scale
+    10.0.pow(floor) * scale
 }
 #[derive(Clone, PartialEq, Debug)]
 pub struct Figure {
@@ -392,14 +487,34 @@ impl From<Vec<Figure>> for PolygonList {
 #[derive(Properties, PartialEq)]
 pub struct RenderProperties {
     pub polygons: PolygonList,
+    pub on_mouse_event: Option<Callback<CanvasMouseEvent>>,
+}
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub struct CanvasMouseEvent {
+    x: Number,
+    y: Number,
+    buttons: u16,
 }
 
 #[function_component(Render2d)]
 pub fn render_2d(properties: &RenderProperties) -> Html {
+    let last_projection = Rc::new(RefCell::new(None::<ScreenProject2d>));
+    let current_projection = last_projection.clone();
+    let onmouse = properties.on_mouse_event.clone().map(|mouse_callback| {
+        Callback::from(move |mouse_event: MouseEvent| {
+            if let Some(p) = current_projection.borrow().deref() {
+                let (x, y) = p.find_origin_point(mouse_event.offset_x(), mouse_event.offset_y());
+                let buttons = mouse_event.buttons();
+                mouse_callback.emit(CanvasMouseEvent { x, y, buttons })
+            }
+        })
+    });
+
     html!(
             <Canvas<CanvasRenderingContext2d, Render>
+                {onmouse}
                 //send props when create a Render
-                render={Box::new(Render{display_list:properties.polygons.0.clone()})}
+                render={Box::new(Render{display_list:properties.polygons.0.clone(), last_projection})}
             >
                 {"The browser is not supported."}
             </Canvas<CanvasRenderingContext2d, Render >>

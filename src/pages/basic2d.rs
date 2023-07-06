@@ -67,7 +67,7 @@ pub fn basic_2d() -> Html {
     );
     let small_triangle = StaticTriangle2d::new(
         (-50.0, 25.0).into(),
-        (0.0, -25.0).into(),
+        (00.0, -25.0).into(),
         (50.0, 25.0).into(),
     );
     let cut_polygon = &small_triangle;
@@ -83,6 +83,7 @@ pub fn basic_2d() -> Html {
             small_triangle.to_any_polygon(),
         ),
     ];
+    //figure_list.clear();
     match &path {
         PolygonPath::Enclosed => {
             figure_list.push(Figure::polygon(
@@ -112,7 +113,8 @@ pub fn basic_2d() -> Html {
     }
 
     let polygons: PolygonList = figure_list.into();
-    html! {<Render2d {polygons}/>}
+    let on_mouse_event = Callback::from(|event| info!("Event: {event:?}"));
+    html! {<Render2d {polygons} {on_mouse_event}/>}
 }
 
 #[function_component(OldBasic2d)]

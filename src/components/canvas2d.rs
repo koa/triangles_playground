@@ -1,14 +1,11 @@
-use std::cell::RefCell;
 use std::ops::Deref;
-use std::rc::Rc;
 
 use gloo::{events::EventListener, utils::window};
-use log::info;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlCanvasElement;
+use web_sys::{HtmlCanvasElement, MouseEvent};
 use yew::{
-    function_component, html, html::ChildrenRenderer, use_effect, use_state, Children, Html,
-    NodeRef, Properties,
+    function_component, html, html::ChildrenRenderer, use_effect, use_state, Callback, Children,
+    Html, NodeRef, Properties,
 };
 
 /// A Canvas component is encapsulated.
@@ -97,8 +94,22 @@ where
         .clone()
         .unwrap_or(ChildrenRenderer::default());
     let (width, height) = display_size.deref();
+    let (onmousemove, onmousedown, onmouseup) = if let Some(mouse_callback) = props.onmouse.clone()
+    {
+        (
+            Some(mouse_callback.clone()),
+            Some(mouse_callback.clone()),
+            Some(mouse_callback),
+        )
+    } else {
+        (None, None, None)
+    };
+
     html! {
     <canvas
+        {onmousemove}
+        {onmousedown}
+        {onmouseup}
         style={style}
         {class}
         width={width.to_string()}
@@ -143,4 +154,5 @@ pub struct Props<T: PartialEq> {
     pub children: Option<Children>,
     pub style: Option<String>,
     pub class: Option<String>,
+    pub onmouse: Option<Callback<MouseEvent>>,
 }
