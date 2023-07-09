@@ -1,11 +1,15 @@
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::default::Default;
+use std::f64::consts::PI;
 use std::ops::Deref;
 use std::rc::Rc;
 
 use log::info;
-use num_traits::Pow;
-use triangles::prelude::{AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d};
+use num_traits::{One, Pow};
+use triangles::prelude::{
+    AnyPolygon, BoundingBox, BoundingBoxValues, Float, Number, Point2d, Polygon2d,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use yew::html::IntoPropValue;
@@ -97,7 +101,7 @@ enum TickSideVertical {
 }
 impl WithRender for Render {
     fn rand(self, canvas: &HtmlCanvasElement) {
-        let ctx: CanvasRenderingContext2d = canvas
+        let mut ctx: CanvasRenderingContext2d = canvas
             .get_context("2d")
             .unwrap()
             .unwrap()
@@ -120,9 +124,8 @@ impl WithRender for Render {
             BoundingBox::Box(bbox) => {
                 let bbox = bbox.expand(0.1.into());
                 let p = ScreenProject2d::from_bounding_box(&bbox, width, height);
-                let _ = self.last_projection.borrow_mut().insert(p);
+                //let _ = self.last_projection.borrow_mut().insert(p);
                 let (zero_x, zero_y) = p.project_point(&(0.0, 0.0).into());
-                info!("Zero: {zero_x},{zero_y}");
                 let (min_x, min_y) = p.project_point(&(bbox.min_x(), bbox.min_y()).into());
                 let (max_x, max_y) = p.project_point(&(bbox.max_x(), bbox.max_y()).into());
                 let (tick_y, tick_side_vertical) = if zero_y < 0.0 {
@@ -130,7 +133,6 @@ impl WithRender for Render {
                 } else if zero_y > height {
                     (height, TickSideVertical::Top)
                 } else {
-                    info!("minmax {min_x} {max_x}");
                     ctx.begin_path();
                     ctx.move_to(min_x, zero_y);
                     ctx.line_to(max_x, zero_y);
@@ -163,7 +165,6 @@ impl WithRender for Render {
                         },
                     )
                 };
-                info!("{tick_x} {tick_side_horizontal:?}");
 
                 let y_step = find_optimal_step(40.0 / p.scale().0);
                 for y_tick in TickSequence::new(bbox.min_y().0, bbox.max_y().0, y_step).iter() {
@@ -176,96 +177,14 @@ impl WithRender for Render {
                 }
 
                 for figure in self.display_list.iter() {
-                    figure.draw(&ctx, &p);
+                    figure.draw(&mut ctx, &p);
                 }
             }
         }
     }
 }
-mod tick_sequence {
 
-    pub struct TickSequence {
-        min: f64,
-        max: f64,
-        step: f64,
-    }
-
-    impl TickSequence {
-        pub fn iter(&self) -> TickSequenceIterator {
-            TickSequenceIterator {
-                sequence: self,
-                current_side: TickSequenceSide::Negative,
-                last_value: Default::default(),
-            }
-        }
-        pub fn new(min: f64, max: f64, step: f64) -> Self {
-            Self { min, max, step }
-        }
-    }
-
-    pub struct TickSequenceIterator<'a> {
-        sequence: &'a TickSequence,
-        current_side: TickSequenceSide,
-        last_value: f64,
-    }
-
-    impl<'a> Iterator for TickSequenceIterator<'a> {
-        type Item = f64;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            match self.current_side {
-                TickSequenceSide::Negative => {
-                    let next_value = self.last_value - self.sequence.step;
-                    if next_value >= self.sequence.min {
-                        self.last_value = next_value;
-                        Some(next_value)
-                    } else if self.sequence.max < self.sequence.step {
-                        None
-                    } else {
-                        self.current_side = TickSequenceSide::Positive;
-                        self.last_value = if self.sequence.min < 0.0 {
-                            self.sequence.step.into()
-                        } else {
-                            (self.sequence.min / self.sequence.step).ceil() * self.sequence.step
-                        };
-                        Some(self.last_value)
-                    }
-                }
-                TickSequenceSide::Positive => {
-                    let next_value = self.last_value + self.sequence.step;
-                    if next_value <= self.sequence.max {
-                        self.last_value = next_value;
-                        Some(self.last_value)
-                    } else {
-                        None
-                    }
-                }
-            }
-        }
-    }
-
-    enum TickSequenceSide {
-        Negative,
-        Positive,
-    }
-    #[test]
-    fn test_sequence() {
-        let sequence = TickSequence::new(-55.0, 45.0, 5.0);
-        let mut iterator = sequence.iter();
-        assert_eq!(Some(-5.0), iterator.next());
-        assert_eq!(Some(-10.0), iterator.next());
-        assert_eq!(Some(-15.0), iterator.next());
-        assert_eq!(Some(-20.0), iterator.next());
-        assert_eq!(Some(-25.0), iterator.next());
-        assert_eq!(Some(-30.0), iterator.next());
-        assert_eq!(Some(-35.0), iterator.next());
-        assert_eq!(Some(-40.0), iterator.next());
-        assert_eq!(Some(-45.0), iterator.next());
-        assert_eq!(Some(-50.0), iterator.next());
-        assert_eq!(Some(-55.0), iterator.next());
-        assert_eq!(Some(5.0), iterator.next());
-    }
-}
+mod tick_sequence;
 
 impl Render {
     fn draw_x_tick(
@@ -350,6 +269,15 @@ pub struct Figure {
 }
 
 impl Figure {
+    pub(crate) fn marker(style: CssStyle, pt: Point2d) -> Figure {
+        Self {
+            style,
+            geometry: AnyGeometry::HoverMarker(pt),
+        }
+    }
+}
+
+impl Figure {
     pub fn polygon(style: CssStyle, polygon: AnyPolygon) -> Self {
         Self {
             style,
@@ -365,7 +293,7 @@ impl Figure {
     fn bbox(&self) -> BoundingBox {
         self.geometry.bounding_box()
     }
-    fn draw(&self, ctx: &CanvasRenderingContext2d, p: &ScreenProject2d) {
+    fn draw(&self, ctx: &mut CanvasRenderingContext2d, p: &ScreenProject2d) {
         match &self.geometry {
             AnyGeometry::Polygon(polygon) => {
                 let mut iter = polygon.points();
@@ -395,6 +323,15 @@ impl Figure {
                     }
                     ctx.stroke();
                 }
+            }
+            AnyGeometry::HoverMarker(pt) => {
+                let (x, y) = p.project_point(pt);
+                ctx.begin_path();
+                ctx.set_stroke_style(&self.style.value());
+                ctx.set_fill_style(&self.style.value());
+                ctx.arc(x, y, 5.0, 0.0, PI * 2.0).expect("Infallible");
+                ctx.fill();
+                ctx.stroke();
             }
         }
     }
@@ -443,6 +380,7 @@ impl CssColor {
 pub enum AnyGeometry {
     Polygon(AnyPolygon),
     Lines(Vec<Point2d>),
+    HoverMarker(Point2d),
 }
 
 impl AnyGeometry {
@@ -459,6 +397,9 @@ impl AnyGeometry {
                     bbox += *p;
                 }
             }
+            AnyGeometry::HoverMarker(p) => {
+                bbox += *p;
+            }
         }
         bbox
     }
@@ -466,6 +407,8 @@ impl AnyGeometry {
 
 #[derive(Clone, PartialEq)]
 pub struct PolygonList(Rc<[Figure]>);
+
+impl PolygonList {}
 
 impl IntoPropValue<Rc<[Figure]>> for PolygonList {
     fn into_prop_value(self) -> Rc<[Figure]> {
@@ -494,6 +437,26 @@ pub struct CanvasMouseEvent {
     x: Number,
     y: Number,
     buttons: u16,
+    resolution: Number,
+}
+
+impl CanvasMouseEvent {
+    #[inline]
+    pub fn x(&self) -> Number {
+        self.x
+    }
+    #[inline]
+    pub fn y(&self) -> Number {
+        self.y
+    }
+    #[inline]
+    pub fn buttons(&self) -> u16 {
+        self.buttons
+    }
+    #[inline]
+    pub fn resolution(&self) -> Number {
+        self.resolution
+    }
 }
 
 #[function_component(Render2d)]
@@ -504,8 +467,14 @@ pub fn render_2d(properties: &RenderProperties) -> Html {
         Callback::from(move |mouse_event: MouseEvent| {
             if let Some(p) = current_projection.borrow().deref() {
                 let (x, y) = p.find_origin_point(mouse_event.offset_x(), mouse_event.offset_y());
+
                 let buttons = mouse_event.buttons();
-                mouse_callback.emit(CanvasMouseEvent { x, y, buttons })
+                mouse_callback.emit(CanvasMouseEvent {
+                    x,
+                    y,
+                    buttons,
+                    resolution: Number::one() / p.scale,
+                })
             }
         })
     });

@@ -1,14 +1,18 @@
+use std::ops::Deref;
+
 use log::info;
 use triangles::prelude::{Line2d, PolygonPath, Triangle2d};
 use triangles::prelude::{Polygon2d, StaticTriangle2d};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-use yew::function_component;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
+use yew::{function_component, use_effect, NodeRef};
 use yew::{html, use_state, Callback, Html};
 
 use crate::components::canvas2d::Canvas;
 use crate::components::canvas2d::WithRender;
-use crate::components::render2d::{CssColor, CssStyle, Figure, PolygonList, Render2d};
+use crate::components::render2d::{
+    CanvasMouseEvent, CssColor, CssStyle, Figure, PolygonList, Render2d,
+};
 
 //Befor impl WithRander, derive Clone and PartialEq first!
 #[derive(Clone, PartialEq)]
@@ -76,7 +80,7 @@ pub fn basic_2d() -> Html {
     let mut figure_list = vec![
         Figure::polygon(
             CssStyle::Color(CssColor::Blue),
-            big_triangle.to_any_polygon(),
+            big_triangle.clone().to_any_polygon(),
         ),
         Figure::polygon(
             CssStyle::Color(CssColor::Green),
@@ -111,10 +115,39 @@ pub fn basic_2d() -> Html {
         }
         PolygonPath::None => {}
     }
+    let current_selection = use_state(|| None);
 
-    let polygons: PolygonList = figure_list.into();
-    let on_mouse_event = Callback::from(|event| info!("Event: {event:?}"));
-    html! {<Render2d {polygons} {on_mouse_event}/>}
+    let polygons = use_state(|| Into::<PolygonList>::into(figure_list.clone()));
+    let write_polygons = polygons.clone();
+
+    let read_selection = current_selection.clone();
+    use_effect(move || {
+        info!("Use effect");
+        if let Some(marker_pos) = read_selection.deref() {
+            let marker = Figure::marker(CssStyle::Color(CssColor::Green), *marker_pos);
+            let mut new_list = figure_list.clone();
+            new_list.push(marker);
+            write_polygons.set(Into::<PolygonList>::into(new_list))
+            //figure_list.clone().push(marker);
+        } else {
+            //  write_polygons.set(Into::<PolygonList>::into(figure_list.clone()));
+        }
+    });
+
+    //let polygons: PolygonList = figure_list.into();
+    let on_mouse_event = Callback::from(move |event: CanvasMouseEvent| {
+        let mut found = None;
+        let r = event.resolution() * event.resolution() * 100.0;
+        for pt in big_triangle.points() {
+            if r >= pt.dist_square(&(event.x(), event.y()).into()) {
+                found = Some(*pt);
+            }
+        }
+        current_selection.set(found);
+        info!("Event: {event:?}, selection: {found:?}")
+    });
+    let p = polygons.deref().clone();
+    html! {<Render2d  polygons={p} {on_mouse_event}/>}
 }
 
 #[function_component(OldBasic2d)]
