@@ -38,7 +38,7 @@ impl<'a> Iterator for TickSequenceIterator<'a> {
                 } else {
                     self.current_side = TickSequenceSide::Positive;
                     self.last_value = if self.sequence.min < 0.0 {
-                        self.sequence.step.into()
+                        self.sequence.step
                     } else {
                         (self.sequence.min / self.sequence.step).ceil() * self.sequence.step
                     };
