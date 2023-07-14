@@ -1,66 +1,12 @@
 use std::ops::Deref;
 
 use log::info;
-use triangles::prelude::{Line2d, PolygonPath, Triangle2d};
-use triangles::prelude::{Polygon2d, StaticTriangle2d};
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
-use yew::{function_component, use_effect, NodeRef};
-use yew::{html, use_state, Callback, Html};
+use triangles::prelude::{Line2d, Polygon2d, PolygonPath, StaticTriangle2d, Triangle2d};
+use yew::{function_component, html, use_state, use_state_eq, Callback, Html, UseStateHandle};
 
-use crate::components::canvas2d::Canvas;
-use crate::components::canvas2d::WithRender;
 use crate::components::render2d::{
     CanvasMouseEvent, CssColor, CssStyle, Figure, PolygonList, Render2d,
 };
-
-//Befor impl WithRander, derive Clone and PartialEq first!
-#[derive(Clone, PartialEq)]
-struct Render {
-    //use this struct send props to canvas
-    sakara: usize,
-}
-
-impl WithRender for Render {
-    fn rand(self, canvas: &HtmlCanvasElement) {
-        let interface: CanvasRenderingContext2d = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into()
-            .unwrap();
-
-        let width = canvas.width() as f64;
-        let height = canvas.height() as f64;
-        interface.clear_rect(0.0, 0.0, width, height);
-        interface.set_fill_style(&JsValue::from_str("#fe5c5a"));
-        interface.set_font("100px sans-serif");
-        interface.set_text_baseline("top");
-
-        let sakara = (vec!['🐟'; self.sakara]).into_iter().collect::<String>();
-        let text = &format!("{}🐟{width};{height}🐟{}", sakara, sakara);
-
-        let text_metrics = interface.measure_text(text).unwrap();
-        let (actual_bounding_box_descent, font_bounding_box_descent, width) = (
-            text_metrics.actual_bounding_box_descent(),
-            text_metrics.font_bounding_box_descent(),
-            text_metrics.width(),
-        );
-        info!(
-            "a:{} b:{} c:{}",
-            actual_bounding_box_descent, font_bounding_box_descent, width
-        );
-
-        let text_pos = (100.0, 100.0);
-
-        interface.fill_text(text, text_pos.0, text_pos.1).unwrap();
-        interface.set_stroke_style(&JsValue::from_str("red"));
-        interface.stroke_rect(text_pos.0, text_pos.1, width, actual_bounding_box_descent);
-
-        interface.set_stroke_style(&JsValue::from_str("green"));
-        interface.stroke_rect(text_pos.0, text_pos.1, width, font_bounding_box_descent)
-    }
-}
 
 #[function_component(Basic2d)]
 pub fn basic_2d() -> Html {
@@ -115,27 +61,13 @@ pub fn basic_2d() -> Html {
         }
         PolygonPath::None => {}
     }
-    let current_selection = use_state(|| None);
 
-    let polygons = use_state(|| Into::<PolygonList>::into(figure_list.clone()));
+    let current_selection = use_state_eq(|| None);
+
+    let polygons: UseStateHandle<PolygonList> = use_state(|| figure_list.clone().into());
     let write_polygons = polygons.clone();
-
-    let read_selection = current_selection.clone();
-    use_effect(move || {
-        info!("Use effect");
-        if let Some(marker_pos) = read_selection.deref() {
-            let marker = Figure::marker(CssStyle::Color(CssColor::Green), *marker_pos);
-            let mut new_list = figure_list.clone();
-            new_list.push(marker);
-            write_polygons.set(Into::<PolygonList>::into(new_list))
-            //figure_list.clone().push(marker);
-        } else {
-            //  write_polygons.set(Into::<PolygonList>::into(figure_list.clone()));
-        }
-    });
-
-    //let polygons: PolygonList = figure_list.into();
     let on_mouse_event = Callback::from(move |event: CanvasMouseEvent| {
+        let x = current_selection.deref();
         let mut found = None;
         let r = event.resolution() * event.resolution() * 100.0;
         for pt in big_triangle.points() {
@@ -143,35 +75,20 @@ pub fn basic_2d() -> Html {
                 found = Some(*pt);
             }
         }
+        if x == &found {
+            return;
+        }
         current_selection.set(found);
-        info!("Event: {event:?}, selection: {found:?}")
+
+        if let Some(marker_pos) = found {
+            let marker = Figure::marker(CssStyle::Color(CssColor::Green), marker_pos);
+            let mut new_list = figure_list.clone();
+            new_list.push(marker);
+            write_polygons.set(Into::<PolygonList>::into(new_list))
+        } else {
+            write_polygons.set(Into::<PolygonList>::into(figure_list.clone()));
+        }
     });
     let p = polygons.deref().clone();
     html! {<Render2d  polygons={p} {on_mouse_event}/>}
-}
-
-#[function_component(OldBasic2d)]
-pub fn old_basic2d() -> Html {
-    let sakara_state = use_state(|| 0);
-
-    let onclick = {
-        let sakara_state = sakara_state.clone();
-        Callback::from(move |_| sakara_state.set(*sakara_state + 1))
-    };
-    html!(
-        <>
-            <button {onclick}>{"+🐟"}</button>
-            <Canvas<CanvasRenderingContext2d, Render>
-                //Just use style, canvas can suit automatically.
-                style="
-                    width: 100vw;
-                    height: calc(100vh - 32px);
-                "
-                //send props when create a Render
-                render={Box::new(Render{sakara: *sakara_state})}
-            >
-                {"The browser is not supported."}
-            </Canvas<CanvasRenderingContext2d, Render >>
-        </>
-    )
 }

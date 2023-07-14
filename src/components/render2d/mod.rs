@@ -7,9 +7,7 @@ use std::rc::Rc;
 
 use log::info;
 use num_traits::{One, Pow};
-use triangles::prelude::{
-    AnyPolygon, BoundingBox, BoundingBoxValues, Float, Number, Point2d, Polygon2d,
-};
+use triangles::prelude::{AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use yew::html::IntoPropValue;
@@ -72,6 +70,7 @@ impl ScreenProject2d {
         self.scale
     }
 }
+
 #[cfg(test)]
 mod test {
     use triangles::prelude::BoundingBoxValues;
@@ -89,16 +88,19 @@ mod test {
         println!("{x},{y}");
     }
 }
+
 #[derive(Debug)]
 enum TickSideHorizontal {
     Left,
     Right,
 }
+
 #[derive(Debug)]
 enum TickSideVertical {
     Top,
     Bottom,
 }
+
 impl WithRender for Render {
     fn rand(self, canvas: &HtmlCanvasElement) {
         let mut ctx: CanvasRenderingContext2d = canvas
@@ -109,6 +111,7 @@ impl WithRender for Render {
             .unwrap();
 
         ctx.set_stroke_style(&CssColor::Black.value());
+        ctx.set_fill_style(&CssColor::Black.value());
 
         let width = canvas.width() as f64;
         let height = canvas.height() as f64;
@@ -124,7 +127,7 @@ impl WithRender for Render {
             BoundingBox::Box(bbox) => {
                 let bbox = bbox.expand(0.1.into());
                 let p = ScreenProject2d::from_bounding_box(&bbox, width, height);
-                //let _ = self.last_projection.borrow_mut().insert(p);
+                self.last_projection.clone().borrow_mut().replace(Some(p));
                 let (zero_x, zero_y) = p.project_point(&(0.0, 0.0).into());
                 let (min_x, min_y) = p.project_point(&(bbox.min_x(), bbox.min_y()).into());
                 let (max_x, max_y) = p.project_point(&(bbox.max_x(), bbox.max_y()).into());
@@ -262,6 +265,7 @@ fn find_optimal_step(step: f64) -> f64 {
     };
     10.0.pow(floor) * scale
 }
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Figure {
     style: CssStyle,
@@ -421,6 +425,7 @@ impl From<Rc<[Figure]>> for PolygonList {
         PolygonList(value)
     }
 }
+
 impl From<Vec<Figure>> for PolygonList {
     fn from(value: Vec<Figure>) -> Self {
         PolygonList(Rc::from(value.as_slice()))
@@ -432,6 +437,7 @@ pub struct RenderProperties {
     pub polygons: PolygonList,
     pub on_mouse_event: Option<Callback<CanvasMouseEvent>>,
 }
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct CanvasMouseEvent {
     x: Number,
@@ -475,6 +481,8 @@ pub fn render_2d(properties: &RenderProperties) -> Html {
                     buttons,
                     resolution: Number::one() / p.scale,
                 })
+            } else {
+                info!("no projection");
             }
         })
     });
