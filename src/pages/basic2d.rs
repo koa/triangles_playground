@@ -22,9 +22,9 @@ macro_rules! enclose {
 pub fn basic_2d() -> Html {
     let big_triangle_state = use_state(|| {
         StaticTriangle2d::new(
-            (-100.0, -50.0).into(),
-            (100.0, -50.0).into(),
-            (0.0, 50.0).into(),
+            (-100.0, 0.0).into(),
+            (100.0, 0.0).into(),
+            (0.0, 100.0).into(),
         )
     });
     let big_triangle = *big_triangle_state;
@@ -34,49 +34,67 @@ pub fn basic_2d() -> Html {
         (50.0, 25.0).into(),
     ));
     let generate_cutting_triangles = enclose! {(big_triangle_state) move || {
-        let cut_polygon = small_triangle.clone();
-        let path = big_triangle.cut(cut_polygon.deref());
+            let cut_polygon = small_triangle.clone();
+            let path = big_triangle.cut(cut_polygon.deref());
 
-        let mut figure_list = vec![
-            Figure::polygon(
-                CssStyle::Color(CssColor::Blue),
-                big_triangle_state.clone().to_any_polygon(),
-            ),
-            Figure::polygon(
-                CssStyle::Color(CssColor::Green),
-                small_triangle.to_any_polygon(),
-            ),
-        ];
-        //figure_list.clear();
-        match &path {
-            PolygonPath::Enclosed => {
-                figure_list.push(Figure::polygon(
-                    CssStyle::Color(CssColor::Red),
-                    cut_polygon.to_any_polygon(),
-                ));
+            let mut figure_list = vec![
+                /*
+                Figure::polygon(
+                    CssStyle::Color(CssColor::Blue),
+                    big_triangle_state.clone().to_any_polygon(),
+                ),
+                Figure::polygon(
+                    CssStyle::Color(CssColor::Green),
+                    small_triangle.to_any_polygon(),
+                ),*/
+            ];
+            for pt in big_triangle_state.points(){
+                figure_list.push(Figure::marker(CssStyle::Color(CssColor::Blue),*pt));
             }
-            PolygonPath::CutSegments(segments) => {
-                for segment in segments {
-                    let mut points = Vec::new();
-                    let start_cut = segment.start_cut();
-                    let end_cut = segment.end_cut();
-                    if let (Some(start_line), Some(end_line)) = (
-                        cut_polygon.lines().nth(start_cut.start_pt_idx()),
-                        cut_polygon.lines().nth(end_cut.start_pt_idx()),
-                    ) {
-                        points.push(start_line.pt_along(start_cut.polygon_pos()));
-                        for p in cut_polygon.points_of_range(segment.copy_points()) {
-                            points.push(*p);
+            //figure_list.clear();
+            match &path {
+                PolygonPath::Enclosed => {
+                    figure_list.push(Figure::polygon(
+                        CssStyle::Color(CssColor::Red),
+                        cut_polygon.to_any_polygon(),
+                    ));
+                }
+                PolygonPath::CutSegments(segments) => {
+                    for segment in segments {
+                        let mut points = Vec::new();
+                        let start_cut = segment.start_cut();
+                        let end_cut = segment.end_cut();
+                        if let (Some(start_line), Some(end_line)) = (
+                            cut_polygon.lines().nth(start_cut.start_pt_idx()),
+                            cut_polygon.lines().nth(end_cut.start_pt_idx()),
+                        ) {
+                            points.push(start_line.pt_along(start_cut.polygon_pos()));
+                            for p in cut_polygon.points_of_range(segment.copy_points()) {
+                                points.push(*p);
+                            }
+                            points.push(end_line.pt_along(end_cut.polygon_pos()));
+                           // figure_list.push(Figure::lines(CssStyle::Color(CssColor::Red), points));
                         }
-                        points.push(end_line.pt_along(end_cut.polygon_pos()));
-                        figure_list.push(Figure::lines(CssStyle::Color(CssColor::Red), points));
                     }
                 }
+                PolygonPath::None => {}
             }
-            PolygonPath::None => {}
-        }
-        figure_list
-    }};
+            let triangles = big_triangle.triangulate_cut_polygons(cut_polygon.as_ref(), &path);
+            for (triangles,style) in triangles.iter().zip([CssStyle::Color(CssColor::Green),CssStyle::Color(CssColor::Red)].iter()) {
+                for triangle in triangles{
+                    figure_list.push(Figure::polygon(style.clone(), triangle.to_any_polygon()));
+                }
+            }
+    /*
+        let polygons =  big_triangle.compose_cut_polygons(cut_polygon.as_ref(), &path);
+        for (polygons,style) in polygons.iter().zip([CssStyle::Color(CssColor::Green),CssStyle::Color(CssColor::Red)].iter()) {
+                for polygon in polygons{
+                figure_list.push(Figure::polygon(style.clone(),polygon.clone().to_any_polygon()));
+                    }
+        }*/
+
+            figure_list
+        }};
 
     let current_selection = use_state(|| None);
 
@@ -119,6 +137,7 @@ pub fn basic_2d() -> Html {
                     };
                     let moved_triangle = StaticTriangle2d::new(*p1,*p2,*p3);
                     if moved_triangle.area()>Number::zero(){
+
                         update_polygons(last_selection, big_triangle_state.deref());
                         big_triangle_state.set( moved_triangle);
                     };
