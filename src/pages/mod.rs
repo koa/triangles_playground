@@ -10,7 +10,8 @@ use yew_nested_router::Switch as RouterSwitch;
 use crate::route::switch_main;
 use crate::route::AppRoute;
 
-pub mod basic2d;
+pub mod test3d;
+pub mod triangle_cut_2d;
 
 #[function_component(MainPage)]
 pub fn main_page() -> Html {
@@ -36,7 +37,8 @@ fn authenticated_sidebar() -> Html {
     let logout = Callback::from(move |_: MouseEvent| {});
     html! {
         <Nav>
-            <NavRouterItem<AppRoute> to={AppRoute::Home}>{"Start"}</NavRouterItem<AppRoute>>
+            <NavRouterItem<AppRoute> to={AppRoute::Basic2d}>{"2D Rendering"}</NavRouterItem<AppRoute>>
+            <NavRouterItem<AppRoute> to={AppRoute::Test3d}>{"3D Test"}</NavRouterItem<AppRoute>>
             <span onclick={logout}><NavItem>{"Logout"}</NavItem></span>
         </Nav>
     }

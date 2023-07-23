@@ -16,8 +16,8 @@ use yew::html::IntoPropValue;
 use yew::{function_component, html, Html};
 use yew::{Callback, Properties};
 
-use crate::components::canvas2d::Canvas;
-use crate::components::canvas2d::WithRender;
+use crate::components::canvas::Canvas;
+use crate::components::canvas::WithRender;
 use crate::components::render2d::tick_sequence::TickSequence;
 use crate::components::render2d::CssStyle::Color;
 

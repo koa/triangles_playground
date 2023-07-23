@@ -2,9 +2,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use num_traits::Zero;
-use triangles::prelude::{
-    Line2d, Number, Point2d, Polygon2d, PolygonPath, StaticPoint2d, StaticTriangle2d, Triangle2d,
-};
+use triangles::prelude::{Number, Point2d, Polygon2d, StaticPoint2d, StaticTriangle2d, Triangle2d};
 use yew::{function_component, html, use_state, Callback, Html, UseStateHandle};
 
 use crate::components::render2d::{
@@ -20,8 +18,8 @@ macro_rules! enclose {
     };
 }
 
-#[function_component(Basic2d)]
-pub fn basic_2d() -> Html {
+#[function_component(TriangleCut2d)]
+pub fn triangle_cut_2d() -> Html {
     let big_triangle_state = use_state(|| {
         StaticTriangle2d::new(
             (-100.0, 0.0).into(),

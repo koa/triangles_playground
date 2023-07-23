@@ -1,2 +1,2 @@
-pub mod canvas2d;
+pub mod canvas;
 pub mod render2d;
