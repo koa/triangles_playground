@@ -2,7 +2,9 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use num_traits::Zero;
-use triangles::prelude::{Line2d, Number, Polygon2d, PolygonPath, StaticTriangle2d, Triangle2d};
+use triangles::prelude::{
+    Line2d, Number, Point2d, Polygon2d, PolygonPath, StaticPoint2d, StaticTriangle2d, Triangle2d,
+};
 use yew::{function_component, html, use_state, Callback, Html, UseStateHandle};
 
 use crate::components::render2d::{
@@ -28,7 +30,7 @@ pub fn basic_2d() -> Html {
         )
     });
     let big_triangle = *big_triangle_state;
-    let small_triangle = Rc::new(StaticTriangle2d::new(
+    let small_triangle = Rc::new(StaticTriangle2d::<StaticPoint2d>::new(
         (-50.0, 25.0).into(),
         (00.0, -25.0).into(),
         (50.0, 25.0).into(),
@@ -52,36 +54,11 @@ pub fn basic_2d() -> Html {
                 figure_list.push(Figure::marker(CssStyle::Color(CssColor::Blue),*pt));
             }
             //figure_list.clear();
-            match &path {
-                PolygonPath::Enclosed => {
-                    figure_list.push(Figure::polygon(
-                        CssStyle::Color(CssColor::Red),
-                        cut_polygon.to_any_polygon(),
-                    ));
-                }
-                PolygonPath::CutSegments(segments) => {
-                    for segment in segments {
-                        let mut points = Vec::new();
-                        let start_cut = segment.start_cut();
-                        let end_cut = segment.end_cut();
-                        if let (Some(start_line), Some(end_line)) = (
-                            cut_polygon.lines().nth(start_cut.start_pt_idx()),
-                            cut_polygon.lines().nth(end_cut.start_pt_idx()),
-                        ) {
-                            points.push(start_line.pt_along(start_cut.polygon_pos()));
-                            for p in cut_polygon.points_of_range(segment.copy_points()) {
-                                points.push(*p);
-                            }
-                            points.push(end_line.pt_along(end_cut.polygon_pos()));
-                           // figure_list.push(Figure::lines(CssStyle::Color(CssColor::Red), points));
-                        }
-                    }
-                }
-                PolygonPath::None => {}
-            }
-            let triangles = big_triangle.triangulate_cut_polygons(cut_polygon.as_ref(), &path);
+
+            let triangles = big_triangle.cut_to_triangles(cut_polygon.as_ref());;
             for (triangles,style) in triangles.iter().zip([CssStyle::Color(CssColor::Green),CssStyle::Color(CssColor::Red)].iter()) {
                 for triangle in triangles{
+                    let triangle=triangle.coordinates_triangle();
                     figure_list.push(Figure::polygon(style.clone(), triangle.to_any_polygon()));
                 }
             }
@@ -100,7 +77,7 @@ pub fn basic_2d() -> Html {
 
     let polygons: UseStateHandle<PolygonList> = use_state(|| generate_cutting_triangles().into());
     let update_polygons = enclose! {(polygons)
-    move | found_idx: Option<usize>, big_triangle: &StaticTriangle2d| {
+    move | found_idx: Option<usize>, big_triangle: &StaticTriangle2d<StaticPoint2d>| {
         let figure_list = generate_cutting_triangles();
         let found = found_idx.and_then(|idx| big_triangle.get_point(idx));
 

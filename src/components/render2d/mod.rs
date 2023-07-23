@@ -7,7 +7,9 @@ use std::rc::Rc;
 
 use log::info;
 use num_traits::{One, Pow};
-use triangles::prelude::{AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d};
+use triangles::prelude::{
+    AnyPolygon, BoundingBox, BoundingBoxValues, Number, Point2d, Polygon2d, StaticPoint2d,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use yew::html::IntoPropValue;
@@ -53,10 +55,11 @@ impl ScreenProject2d {
             y_offset,
         }
     }
-    fn project_point(&self, p: &Point2d) -> (f64, f64) {
+    fn project_point<P: Point2d>(&self, p: &P) -> (f64, f64) {
+        let StaticPoint2d { x, y } = p.coordinates();
         (
-            (self.scale * p.x() + self.x_offset).into(),
-            (-self.scale * p.y() + self.y_offset).into(),
+            (self.scale * x + self.x_offset).into(),
+            (-self.scale * y + self.y_offset).into(),
         )
     }
     fn find_origin_point(&self, x: i32, y: i32) -> (Number, Number) {
@@ -128,9 +131,11 @@ impl WithRender for Render {
                 let bbox = bbox.expand(0.1.into());
                 let p = ScreenProject2d::from_bounding_box(&bbox, width, height);
                 self.last_projection.clone().borrow_mut().replace(Some(p));
-                let (zero_x, zero_y) = p.project_point(&(0.0, 0.0).into());
-                let (min_x, min_y) = p.project_point(&(bbox.min_x(), bbox.min_y()).into());
-                let (max_x, max_y) = p.project_point(&(bbox.max_x(), bbox.max_y()).into());
+                let (zero_x, zero_y) = p.project_point::<StaticPoint2d>(&(0.0, 0.0).into());
+                let (min_x, min_y) =
+                    p.project_point::<StaticPoint2d>(&(bbox.min_x(), bbox.min_y()).into());
+                let (max_x, max_y) =
+                    p.project_point::<StaticPoint2d>(&(bbox.max_x(), bbox.max_y()).into());
                 let (tick_y, tick_side_vertical) = if zero_y < 0.0 {
                     (0.0, TickSideVertical::Bottom)
                 } else if zero_y > height {
@@ -197,7 +202,7 @@ impl Render {
         x_tick: f64,
         tick_y: f64,
     ) {
-        let (x, _) = p.project_point(&(x_tick, 0.0).into());
+        let (x, _) = p.project_point::<StaticPoint2d>(&(x_tick, 0.0).into());
         let label = &format!("{}", x_tick);
         let text_metrics = ctx.measure_text(label).unwrap();
         let text_width = text_metrics.width();
@@ -227,7 +232,7 @@ impl Render {
         y_tick: f64,
         tick_x: f64,
     ) {
-        let (_, y) = p.project_point(&(0.0, y_tick).into());
+        let (_, y) = p.project_point::<StaticPoint2d>(&(0.0, y_tick).into());
         let label = &format!("{}", y_tick);
         match tick_side_horizontal {
             TickSideHorizontal::Right => {
@@ -273,22 +278,22 @@ pub struct Figure {
 }
 
 impl Figure {
-    pub(crate) fn marker(style: CssStyle, pt: Point2d) -> Figure {
+    pub(crate) fn marker<P: Point2d>(style: CssStyle, pt: P) -> Figure {
         Self {
             style,
-            geometry: AnyGeometry::HoverMarker(pt),
+            geometry: AnyGeometry::HoverMarker(pt.coordinates()),
         }
     }
 }
 
 impl Figure {
-    pub fn polygon(style: CssStyle, polygon: AnyPolygon) -> Self {
+    pub fn polygon(style: CssStyle, polygon: AnyPolygon<StaticPoint2d>) -> Self {
         Self {
             style,
             geometry: AnyGeometry::Polygon(polygon),
         }
     }
-    pub fn lines(style: CssStyle, lines: Vec<Point2d>) -> Self {
+    pub fn lines(style: CssStyle, lines: Vec<StaticPoint2d>) -> Self {
         Self {
             style,
             geometry: AnyGeometry::Lines(lines),
@@ -382,9 +387,9 @@ impl CssColor {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum AnyGeometry {
-    Polygon(AnyPolygon),
-    Lines(Vec<Point2d>),
-    HoverMarker(Point2d),
+    Polygon(AnyPolygon<StaticPoint2d>),
+    Lines(Vec<StaticPoint2d>),
+    HoverMarker(StaticPoint2d),
 }
 
 impl AnyGeometry {
