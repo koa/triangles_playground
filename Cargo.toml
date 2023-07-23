@@ -17,7 +17,13 @@ yew-nested-router = { version = "0.2" }
 gloo = "0.8"
 triangles = { path = "../triangles" }
 num-traits = "0.2.15"
+three-d = "0.15.0"
+glow = "0.12.3"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["HtmlCanvasElement", "CanvasRenderingContext2d", "TextMetrics"]
+features = ["HtmlCanvasElement", "CanvasRenderingContext2d", "TextMetrics", 'WebGlBuffer',
+    'WebGlVertexArrayObject',
+    'WebGl2RenderingContext',
+    'WebGlProgram',
+    'WebGlShader', ]
