@@ -60,8 +60,8 @@ impl WithRender for WebGl {
         // Add an animation to the triangle.
         model.set_animation(|time| Mat4::from_angle_y(radians(time * 0.005)));
         camera.set_viewport(Viewport {
-            x: canvas.offset_left(),
-            y: canvas.offset_top(),
+            x: 0,
+            y: 0,
             width: canvas.width(),
             height: canvas.height(),
         });
